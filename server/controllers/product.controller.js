@@ -66,11 +66,25 @@ export const getProductController = async(request,response)=>{
             limit = 10
         }
 
-        const query = search ? {
-            $text : {
-                $search : search
+        let query = {}
+        if(search) {
+            try {
+                // Try text search first
+                query = {
+                    $text: {
+                        $search: search
+                    }
+                }
+            } catch (error) {
+                // Fallback to regex search if text index doesn't exist
+                query = {
+                    $or: [
+                        { name: { $regex: search, $options: 'i' } },
+                        { description: { $regex: search, $options: 'i' } }
+                    ]
+                }
             }
-        } : {}
+        }
 
         const skip = (page - 1) * limit
 
@@ -265,47 +279,72 @@ export const deleteProductDetails = async(request,response)=>{
 }
 
 //search product
-export const searchProduct = async(request,response)=>{
-    try {
-        let { search, page , limit } = request.body 
+export const searchProduct = async (req, res) => {
+  try {
+    let { search, page, limit } = req.body;
 
-        if(!page){
-            page = 1
-        }
-        if(!limit){
-            limit  = 10
-        }
+    page = Number(page) || 1;
+    limit = Number(limit) || 10;
+    const skip = (page - 1) * limit;
 
-        const query = search ? {
-            $text : {
-                $search : search
-            }
-        } : {}
+    let query = {};
 
-        const skip = ( page - 1) * limit
-
-        const [data,dataCount] = await Promise.all([
-            ProductModel.find(query).sort({ createdAt  : -1 }).skip(skip).limit(limit).populate('category subCategory'),
-            ProductModel.countDocuments(query)
-        ])
-
-        return response.json({
-            message : "Product data",
-            error : false,
-            success : true,
-            data : data,
-            totalCount :dataCount,
-            totalPage : Math.ceil(dataCount/limit),
-            page : page,
-            limit : limit 
-        })
-
-
-    } catch (error) {
-        return response.status(500).json({
-            message : error.message || error,
-            error : true,
-            success : false
-        })
+    if (search?.trim()) {
+      // First try text search
+      query = { $text: { $search: search.trim() } };
     }
-}
+
+    let data = [];
+    let dataCount = 0;
+
+    try {
+      // Attempt text search
+      [data, dataCount] = await Promise.all([
+        ProductModel.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .populate("category subCategory"),
+        ProductModel.countDocuments(query)
+      ]);
+    } catch (err) {
+      if (err.code === 27 || err.message?.includes("text index required")) {
+        // Fallback to regex search if no text index
+        query = {
+          $or: [
+            { name: { $regex: search, $options: "i" } },
+            { description: { $regex: search, $options: "i" } }
+          ]
+        };
+
+        [data, dataCount] = await Promise.all([
+          ProductModel.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate("category subCategory"),
+          ProductModel.countDocuments(query)
+        ]);
+      } else {
+        throw err;
+      }
+    }
+
+    return res.json({
+      message: "Product data",
+      error: false,
+      success: true,
+      data,
+      totalCount: dataCount,
+      totalPage: Math.ceil(dataCount / limit),
+      page,
+      limit
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false
+    });
+  }
+};

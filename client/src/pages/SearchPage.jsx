@@ -16,40 +16,34 @@ const SearchPage = () => {
   const [totalPage,setTotalPage] = useState(1)
   const params = useLocation()
   const searchText = params?.search?.slice(3)
+const fetchData = async () => {
+  try {
+    if (page === 1) setLoading(true);
 
-  const fetchData = async() => {
-    try {
-      setLoading(true)
-        const response = await Axios({
-            ...SummaryApi.searchProduct,
-            data : {
-              search : searchText ,
-              page : page,
-            }
-        })
+    const response = await Axios({
+      ...SummaryApi.searchProduct,
+      data: {
+        search: searchText,
+        page,
+      },
+    });
 
-        const { data : responseData } = response
+    const { data: responseData } = response;
 
-        if(responseData.success){
-            if(responseData.page == 1){
-              setData(responseData.data)
-            }else{
-              setData((preve)=>{
-                return[
-                  ...preve,
-                  ...responseData.data
-                ]
-              })
-            }
-            setTotalPage(responseData.totalPage)
-            console.log(responseData)
-        }
-    } catch (error) {
-        AxiosToastError(error)
-    }finally{
-      setLoading(false)
+    if (responseData.success) {
+      if (page === 1) {
+        setData(responseData.data);
+      } else {
+        setData(prev => [...prev, ...responseData.data]);
+      }
+      setTotalPage(responseData.totalPage || 1);
     }
+  } catch (error) {
+    AxiosToastError(error);
+  } finally {
+    if (page === 1) setLoading(false);
   }
+};
 
   useEffect(()=>{
     fetchData()
